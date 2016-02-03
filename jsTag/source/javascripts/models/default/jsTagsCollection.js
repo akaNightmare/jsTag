@@ -14,6 +14,7 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
 
     this._onAddListenerList = [];
     this._onRemoveListenerList = [];
+    this._onEditListenerList = [];
 
     this.unsetActiveTags();
     this.unsetEditedTag();
@@ -55,6 +56,10 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
 
   JSTagsCollection.prototype.onAdd = function onAdd(callback) {
     this._onAddListenerList.push(callback);
+  };
+
+  JSTagsCollection.prototype.onEdit = function onEdit(callback) {
+    this._onEditListenerList.push(callback);
   };
 
   JSTagsCollection.prototype.onRemove = function onRemove(callback) {
@@ -161,6 +166,7 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
   // Sets the tag in the _editedTag member
   JSTagsCollection.prototype.setEditedTag = function(tag) {
     this._editedTag = tag;
+    this._editedTagOriginValue = angular.copy(tag.value);
   };
 
   // Unsets the 'edit' flag on a tag by it's given index
@@ -168,7 +174,9 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
     // Kill empty tags!
     if (this._editedTag !== undefined &&
         this._editedTag !== null &&
-        this._editedTag.value === "") {
+        this._editedTag.value === ''
+    ) {
+      this._editedTagOriginValue = undefined;
       this.removeTag(this._editedTag.id);
     }
 
