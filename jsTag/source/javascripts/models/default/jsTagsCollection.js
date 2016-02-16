@@ -43,6 +43,8 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
     angular.forEach(this._onAddListenerList, function (callback) {
       callback(newTag);
     });
+
+    return newTag;
   };
 
   // Removes the received tag

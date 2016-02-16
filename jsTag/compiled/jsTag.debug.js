@@ -2,7 +2,7 @@
 * jsTag JavaScript Library - Editing tags based on angularJS 
 * Git: https://github.com/eranhirs/jsTag/tree/master
 * License: MIT (http://www.opensource.org/licenses/mit-license.php)
-* Compiled At: 02/03/2016 17:16
+* Compiled At: 02/11/2016 10:56
 **************************************************/
 'use strict';
 var jsTag = angular.module('jsTag', []);
@@ -16,6 +16,7 @@ jsTag.constant('jsTagDefaults', {
     44 // Comma
   ],
   'splitter': ',',
+  'addOnInvalid': false,
   'texts': {
     'inputPlaceHolder': "Input text",
     'removeSymbol': String.fromCharCode(215)
@@ -58,6 +59,7 @@ var jsTag = angular.module('jsTag');
 jsTag.factory('JSTag', function() {
   function JSTag(value, id) {
     this.value = value;
+    this.valid = true;
     this.id = id;
   }
   
@@ -108,6 +110,8 @@ jsTag.factory('JSTagsCollection', ['JSTag', '$filter', function(JSTag, $filter) 
     angular.forEach(this._onAddListenerList, function (callback) {
       callback(newTag);
     });
+
+    return newTag;
   };
 
   // Removes the received tag
@@ -386,17 +390,8 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
 
     // breakCodeHit is called when finished creating tag
     InputService.prototype.breakCodeHit = function (tagsCollection, options) {
-        if (this.input !== "") {
-            if (tagsCollection._valueFormatter) {
-                this.input = tagsCollection._valueFormatter(this.input);
-            }
-            if (tagsCollection._valueValidator) {
-                if (!tagsCollection._valueValidator(this.input)) {
-                    return;
-                }
-            }
-
-            var originalValue = this.resetInput();
+        if (this.input !== '') {
+            var originalValue = this.resetInput(), isValueValid = true;
 
             // Input is an object when using typeahead (the key is chosen by the user)
             if (originalValue instanceof Object) {
@@ -404,20 +399,42 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
             }
 
             // Split value by spliter (usually ,)
-            var values = originalValue.split(options.splitter);
+            var values = originalValue.split(options.splitter), i, key, value;
             // Remove empty string objects from the values
-            for (var i = 0; i < values.length; i++) {
+            for (i = 0; i < values.length; i++) {
                 if (!values[i]) {
-                    values.splice(i, 1);
-                    i--;
+                    values.splice(i--, 1);
                 }
             }
 
             // Add tags to collection
-            for (var key in values) {
-                if (!values.hasOwnProperty(key)) continue;  // for IE 8
-                var value = values[key];
+            for (key in values) {
+                if (!values.hasOwnProperty(key)) {
+                    continue;
+                }  // for IE 8
+                value = values[key];
+
+                if (tagsCollection._valueFormatter) {
+                    value = tagsCollection._valueFormatter(value);
+                }
+                if (typeof tagsCollection._valueValidator === 'function') {
+                    var isValid = tagsCollection._valueValidator(value);
+                    if (isValid === null) {
+                        isValueValid = false;
+                        continue;
+                    } else if (isValid === false) {
+                        if (this.options.addOnInvalid) {
+                            var tag = tagsCollection.addTag(value);
+                            tag.valid = false;
+                        }
+                        continue;
+                    }
+                }
                 tagsCollection.addTag(value);
+            }
+
+            if (!isValueValid) {
+                this.input = originalValue;
             }
         }
     };
@@ -437,9 +454,17 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
         }
         editedTag.value = value;
 
-        if (tagsCollection._valueValidator) {
-            if (!tagsCollection._valueValidator(editedTag.value)) {
+        if (typeof tagsCollection._valueValidator === 'function') {
+            var isValid = tagsCollection._valueValidator(editedTag.value);
+            if (isValid === null) {
                 return;
+            } else if (isValid === false) {
+                if (!this.options.addOnInvalid) {
+                    return;
+                }
+                editedTag.valid = false;
+            } else {
+                editedTag.valid = true;
             }
         }
 
@@ -594,8 +619,7 @@ jsTag.controller('JSTagMainCtrl', ['$attrs', '$scope', 'InputService', 'TagsInpu
   $scope.inputService = new InputService($scope.options);
 
   // Export tagsCollection separately since it's used alot
-  var tagsCollection = $scope.tagsInputService.tagsCollection;
-  $scope.tagsCollection = tagsCollection;
+  $scope.tagsCollection = $scope.tagsInputService.tagsCollection;
 
   // TODO: Should be inside inside tagsCollection.js
   // On every change to editedTags keep isThereAnEditedTag posted
@@ -768,7 +792,8 @@ angular.module("jsTag").run(["$templateCache", function($templateCache) {
     "    ng-switch=\"tagsCollection.isTagEdited(tag)\">\n" +
     "    <span\n" +
     "      ng-switch-when=\"false\"\n" +
-    "      class=\"jt-tag active-{{tagsCollection.isTagActive(tag)}}\">\n" +
+    "      data-tag-id=\"{{tag.id}}\"\n" +
+    "      class=\"jt-tag valid-{{tag.valid}} active-{{tagsCollection.isTagActive(tag)}}\">\n" +
     "      <span\n" +
     "        class=\"value\"\n" +
     "        ng-click=\"tagsInputService.tagClicked(tag)\"\n" +
@@ -781,9 +806,9 @@ angular.module("jsTag").run(["$templateCache", function($templateCache) {
     "    <span\n" +
     "      ng-switch-when=\"true\">\n" +
     "      <input\n" +
-    "        type=\"text\"\n" +
     "        class=\"jt-tag-edit\"\n" +
-    "        focus-once\n" +
+    "        type=\"text\"\n" +
+    "        focus-me=\"tagsCollection.isTagEdited(tag)\"\n" +
     "        ng-model=\"tag.value\"\n" +
     "        data-tag-id=\"{{tag.id}}\"\n" +
     "        ng-keydown=\"inputService.tagInputKeydown(tagsCollection, {$event: $event})\"\n" +
@@ -820,7 +845,8 @@ angular.module("jsTag").run(["$templateCache", function($templateCache) {
     "    ng-switch=\"tagsCollection.isTagEdited(tag)\">\n" +
     "    <span\n" +
     "      ng-switch-when=\"false\"\n" +
-    "      class=\"jt-tag active-{{tagsCollection.isTagActive(tag)}}\">\n" +
+    "      data-tag-id=\"{{tag.id}}\"\n" +
+    "      class=\"jt-tag valid-{{tag.valid}} active-{{tagsCollection.isTagActive(tag)}}\">\n" +
     "      <span\n" +
     "        class=\"value\"\n" +
     "        ng-click=\"tagsInputService.tagClicked(tag)\"\n" +

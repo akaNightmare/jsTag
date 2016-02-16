@@ -96,17 +96,8 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
 
     // breakCodeHit is called when finished creating tag
     InputService.prototype.breakCodeHit = function (tagsCollection, options) {
-        if (this.input !== "") {
-            if (tagsCollection._valueFormatter) {
-                this.input = tagsCollection._valueFormatter(this.input);
-            }
-            if (tagsCollection._valueValidator) {
-                if (!tagsCollection._valueValidator(this.input)) {
-                    return;
-                }
-            }
-
-            var originalValue = this.resetInput();
+        if (this.input !== '') {
+            var originalValue = this.resetInput(), isValueValid = true;
 
             // Input is an object when using typeahead (the key is chosen by the user)
             if (originalValue instanceof Object) {
@@ -114,20 +105,42 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
             }
 
             // Split value by spliter (usually ,)
-            var values = originalValue.split(options.splitter);
+            var values = originalValue.split(options.splitter), i, key, value;
             // Remove empty string objects from the values
-            for (var i = 0; i < values.length; i++) {
+            for (i = 0; i < values.length; i++) {
                 if (!values[i]) {
-                    values.splice(i, 1);
-                    i--;
+                    values.splice(i--, 1);
                 }
             }
 
             // Add tags to collection
-            for (var key in values) {
-                if (!values.hasOwnProperty(key)) continue;  // for IE 8
-                var value = values[key];
+            for (key in values) {
+                if (!values.hasOwnProperty(key)) {
+                    continue;
+                }  // for IE 8
+                value = values[key];
+
+                if (tagsCollection._valueFormatter) {
+                    value = tagsCollection._valueFormatter(value);
+                }
+                if (typeof tagsCollection._valueValidator === 'function') {
+                    var isValid = tagsCollection._valueValidator(value);
+                    if (isValid === null) {
+                        isValueValid = false;
+                        continue;
+                    } else if (isValid === false) {
+                        if (this.options.addOnInvalid) {
+                            var tag = tagsCollection.addTag(value);
+                            tag.valid = false;
+                        }
+                        continue;
+                    }
+                }
                 tagsCollection.addTag(value);
+            }
+
+            if (!isValueValid) {
+                this.input = originalValue;
             }
         }
     };
@@ -147,9 +160,17 @@ jsTag.factory('InputService', ['$filter', function ($filter) {
         }
         editedTag.value = value;
 
-        if (tagsCollection._valueValidator) {
-            if (!tagsCollection._valueValidator(editedTag.value)) {
+        if (typeof tagsCollection._valueValidator === 'function') {
+            var isValid = tagsCollection._valueValidator(editedTag.value);
+            if (isValid === null) {
                 return;
+            } else if (isValid === false) {
+                if (!this.options.addOnInvalid) {
+                    return;
+                }
+                editedTag.valid = false;
+            } else {
+                editedTag.valid = true;
             }
         }
 
